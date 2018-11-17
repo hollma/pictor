@@ -1,6 +1,7 @@
 import argparse
 import helpers
 import random
+from math import log2
 
 
 class Pictor:
@@ -31,11 +32,15 @@ class Pictor:
                             help="Pixel corner radius.")
         parser.add_argument("-rb", "--rainbow", action="store_true",
                             help="Use rainbow colors instead of a fixed color.")
+        parser.add_argument("-lt", "--l-tiling", action="store_true",
+                            help="Generate an L-tiling.")
+        parser.add_argument("-op", "--opacity", default=0.6,
+                            help="Opacity of a pixel.")
         parser.add_argument("-o", "--out", type=str, default="out.svg", metavar="path",
                             help="The path to the output file.")
         parser.add_argument("-v", "--verbose", action="store_true",
                             help="Print additional outputs")
-        parser.add_argument("--version", action="version", version="Pictor 0.1")
+        parser.add_argument("--version", action="version", version="Pictor 0.2")
 
         args = parser.parse_args()
 
@@ -64,7 +69,16 @@ class Pictor:
             print("Contrasts need to be between 0 and 1 and min contrast needs to be smaller than max contrast.")
             return False, None
 
-        args.border[0] = int(args.border[0])
+        if args.l_tiling:
+            if args.dim[0] != args.dim[1]:
+                print("x-dim and y-dim must to be equal.")
+                return False, None
+            number_of_tiles = args.dim[0] / args.scale
+            if log2(number_of_tiles) != int(log2(number_of_tiles)):
+               print("The ratio dim/scale must be a power of 2.")
+               return False, None
+
+        args.border[0] = float(args.border[0])
 
         return True, args
 
@@ -77,7 +91,11 @@ class Pictor:
 
         # depending on the arguments create the right image
         dims = self.get_image_dimensions()
-        image = self.create_random_image(dims, self.args.color)
+
+        if self.args.l_tiling:
+            image = self.create_l_tiling(dims)
+        else:
+            image = self.create_random_image(dims, self.args.color)
 
         self.export_svg(image, dims)
 
@@ -100,9 +118,96 @@ class Pictor:
         return [contrast_range_factor["min"] + step * contrast_step_size for step in
                 range(0, self.args.num_shadings)]
 
-    def create_random_image(self, dims, rgb_color):
+    def place_l_tile_pixels(self, rotation, size, color, x, y, pixel_dict):
+
+        if rotation == 0:
+            # standard L
+            pixel_dict[(x, y)]         = color
+            pixel_dict[(x, y+size//2)] = color
+            pixel_dict[(x+size//2, y+size//2)] = color
+
+        elif rotation == 90:
+            # _|
+            pixel_dict[(x+size//2, y)]         = color
+            pixel_dict[(x+size//2, y+size//2)] = color
+            pixel_dict[(x, y+size//2)] = color
+
+        elif rotation == 180:
+            # ~|
+            pixel_dict[(x, y)]         = color
+            pixel_dict[(x+size//2, y)] = color
+            pixel_dict[(x+size//2, y+size//2)] = color
+
+        elif rotation == 270:
+            # |~
+            pixel_dict[(x, y)]         = color
+            pixel_dict[(x+size//2, y)] = color
+            pixel_dict[(x, y+size//2)] = color
+        else:
+            raise Exception("invalid rotation")
+
+        return
+
+    def placement(self, x_offset, y_offset, rotation, size, pixel_dict):
+        if size < self.args.scale: 
+            return " "
+        if size == self.args.scale:
+            color = (random.randint(0,255), random.randint(0,255), random.randint(0,255))
+            return self.place_l_tile_pixels(rotation, size, color, x_offset, y_offset, pixel_dict)
+        else:
+            if rotation == 0:
+                x_new_m, y_new_m   = x_offset+size//4, y_offset+size//4
+                x_new_lo, y_new_lo = x_offset, y_offset
+                x_new_lu, y_new_lu = x_offset, y_offset + size//2
+                x_new_ru, y_new_ru = x_offset + size//2, y_offset+ size//2
+            elif rotation == 90:
+                x_new_m, y_new_m   = x_offset+size//4, y_offset+size//4
+                x_new_lo, y_new_lo = x_offset, y_offset+size//2
+                x_new_lu, y_new_lu = x_offset+size//2, y_offset+size//2
+                x_new_ru, y_new_ru = x_offset+size//2, y_offset
+            elif rotation == 180:
+                x_new_m, y_new_m   = x_offset+size//4, y_offset+size//4
+                x_new_lo, y_new_lo = x_offset+size//2, y_offset+size//2
+                x_new_lu, y_new_lu = x_offset+size//2, y_offset
+                x_new_ru, y_new_ru = x_offset, y_offset
+            elif rotation == 270:
+                x_new_m, y_new_m   = x_offset+size//4, y_offset+size//4
+                x_new_lo, y_new_lo = x_offset+size//2, y_offset
+                x_new_lu, y_new_lu = x_offset, y_offset
+                x_new_ru, y_new_ru = x_offset, y_offset + size//2
+
+        new_rotation_m  = rotation
+        new_rotation_lo = (rotation + 270) % 360
+        new_rotation_lu = rotation
+        new_rotation_ru = (rotation + 90) % 360
+        
+        middle = self.placement(x_new_m, y_new_m, new_rotation_m, size//2, pixel_dict)        
+        lo = self.placement(x_new_lo, y_new_lo, new_rotation_lo, size//2, pixel_dict)
+        lu = self.placement(x_new_lu, y_new_lu, new_rotation_lu, size//2, pixel_dict)
+        ru = self.placement(x_new_ru, y_new_ru, new_rotation_ru, size//2, pixel_dict)
+        
+        return
+
+
+    def create_l_tiling(self, dims):
+        """
+        :param dims : Image dimensions
+        :return:
         """
 
+        image = {"background": helpers.rgb_str_to_tuple(self.args.background),
+                 "pixels": []}
+
+        pixel_dict = {}
+
+        self.placement(0, 0, 0, self.args.dim[0], pixel_dict)
+
+        # print(pixel_dict)
+        image["pixels"] = [{"x" : x, "y" : y, "size" : 2, "color" : pixel_dict[(x,y)], "radius" : self.args.radius} for (x,y) in pixel_dict.keys() ]
+        return image
+
+    def create_random_image(self, dims, rgb_color):
+        """
         :param dims: Image dimensions
         :param rgb_color: A color in RGB format.
         :return:
@@ -159,9 +264,11 @@ class Pictor:
 
         # write pixels
         for pixel in image["pixels"]:
+            print(pixel)
             f.write("<rect height=\"{0}\" width=\"{0}\" x=\"{1}\" y=\"{2}\" "
                     .format(pixel["size"] * scale, pixel["x"] * scale, pixel["y"] * scale)
                     + ("rx=\"{0}\" ry=\"{0}\" ".format(pixel["radius"]) if pixel["radius"] > 0 else "")
+                    + ("fill-opacity=\"{0}\" ".format(self.args.opacity))
                     + "style=\"fill: rgb({0},{1},{2});".format(*pixel["color"])
                     + ("stroke-width:{0};stroke: rgb({1},{2},{3})"
                         .format(self.args.border[0], *helpers.rgb_str_to_tuple(self.args.border[1]))
