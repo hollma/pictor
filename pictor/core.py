@@ -203,7 +203,7 @@ class Pictor:
         self.placement(0, 0, 0, self.args.dim[0], pixel_dict)
 
         # print(pixel_dict)
-        image["pixels"] = [{"x" : x, "y" : y, "size" : 2, "color" : pixel_dict[(x,y)], "radius" : self.args.radius} for (x,y) in pixel_dict.keys() ]
+        image["pixels"] = [{"x" : x, "y" : y, "size" : self.args.scale//2, "color" : pixel_dict[(x,y)], "radius" : self.args.radius} for (x,y) in pixel_dict.keys() ]
         return image
 
     def create_random_image(self, dims, rgb_color):
