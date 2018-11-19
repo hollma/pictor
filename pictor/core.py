@@ -73,10 +73,20 @@ class Pictor:
             if args.dim[0] != args.dim[1]:
                 print("x-dim and y-dim must to be equal.")
                 return False, None
-            number_of_tiles = args.dim[0] / args.scale
+            number_of_tiles = args.dim[0] / (2*args.scale)
+            
             if log2(number_of_tiles) != int(log2(number_of_tiles)):
-               print("The ratio dim/scale must be a power of 2.")
+               print("The ratio dim/(2*scale) must be a power of 2.")
+               print("Now the ratio is", str(number_of_tiles))
                return False, None
+            
+            if args.dim[0] % 4 != 0:
+                print("Dimension must be a multiple of 4.")
+                return False, None
+
+            if args.scale % 4 != 0:
+                print("Scale must be a multiple of 4.")
+                return False, None
 
         args.border[0] = float(args.border[0])
 
@@ -93,6 +103,8 @@ class Pictor:
         dims = self.get_image_dimensions()
 
         if self.args.l_tiling:
+            if self.args.out == "out.svg":
+                self.args.out = "{0}_{0}_s{1}.svg".format(int(self.args.dim[0] / (self.args.scale)), self.args.scale)
             image = self.create_l_tiling(dims)
         else:
             image = self.create_random_image(dims, self.args.color)
@@ -200,10 +212,10 @@ class Pictor:
 
         pixel_dict = {}
 
-        self.placement(0, 0, 0, self.args.dim[0], pixel_dict)
+        self.placement(0, 0, 0, self.args.dim[0]/2, pixel_dict)
 
         # print(pixel_dict)
-        image["pixels"] = [{"x" : x, "y" : y, "size" : self.args.scale//2, "color" : pixel_dict[(x,y)], "radius" : self.args.radius} for (x,y) in pixel_dict.keys() ]
+        image["pixels"] = [{"x" : x, "y" : y, "size" : self.args.scale/2, "color" : pixel_dict[(x,y)], "radius" : self.args.radius} for (x,y) in pixel_dict.keys() ]
         return image
 
     def create_random_image(self, dims, rgb_color):
@@ -264,7 +276,7 @@ class Pictor:
 
         # write pixels
         for pixel in image["pixels"]:
-            print(pixel)
+            # print(pixel)
             f.write("<rect height=\"{0}\" width=\"{0}\" x=\"{1}\" y=\"{2}\" "
                     .format(pixel["size"] * scale, pixel["x"] * scale, pixel["y"] * scale)
                     + ("rx=\"{0}\" ry=\"{0}\" ".format(pixel["radius"]) if pixel["radius"] > 0 else "")
